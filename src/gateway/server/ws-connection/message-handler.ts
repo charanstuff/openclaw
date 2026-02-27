@@ -392,6 +392,51 @@ export function attachGatewayWsMessageHandler(params: {
 
         const isControlUi = connectParams.client.id === GATEWAY_CLIENT_IDS.CONTROL_UI;
         const isWebchat = isWebchatConnect(connectParams);
+
+        // Fallback: when the Control UI or WebChat connects via a reverse proxy (e.g. nginx)
+        // that injects the gateway token into headers/query, but the client itself did not
+        // include a token in connect.params.auth, recover the token from the upgrade request.
+        if ((isControlUi || isWebchat) && (!connectParams.auth || !connectParams.auth.token)) {
+          const headerValue = (value: string | string[] | undefined) =>
+            Array.isArray(value) ? value[0] : value;
+
+          let headerToken: string | undefined;
+
+          // Authorization: Bearer <token>
+          const authHeader = headerValue(upgradeReq.headers["authorization"]);
+          if (authHeader && /^bearer\s+/i.test(authHeader)) {
+            headerToken = authHeader.replace(/^bearer\s+/i, "").trim();
+          }
+
+          // x-openclaw-api-key / x-api-key
+          const apiKeyHeader =
+            headerValue(upgradeReq.headers["x-openclaw-api-key"]) ??
+            headerValue(upgradeReq.headers["x-api-key"]);
+          if (!headerToken && apiKeyHeader) {
+            headerToken = apiKeyHeader.trim();
+          }
+
+          // ?token=<...> on the WebSocket URL (reverse proxy may append this)
+          if (!headerToken && upgradeReq.url) {
+            try {
+              const u = new URL(upgradeReq.url, `http://${requestHost ?? "localhost"}`);
+              const qsToken = u.searchParams.get("token");
+              if (qsToken) {
+                headerToken = qsToken;
+              }
+            } catch {
+              // ignore URL parse errors
+            }
+          }
+
+          if (headerToken) {
+            connectParams.auth = connectParams.auth ?? {};
+            connectParams.auth.token = headerToken;
+            // Rely on token-only auth; skip device verification so stale device identity
+            // from the browser does not cause "device signature invalid".
+            connectParams.device = undefined;
+          }
+        }
         if (enforceOriginCheckForAnyClient || isControlUi || isWebchat) {
           const originCheck = checkBrowserOrigin({
             requestHost,
@@ -507,6 +552,7 @@ export function attachGatewayWsMessageHandler(params: {
             authOk,
             hasSharedAuth,
             isLocalClient,
+            isFromTrustedProxy: remoteIsTrustedProxy,
           });
           if (decision.kind === "allow") {
             return true;

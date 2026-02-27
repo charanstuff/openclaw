@@ -93,6 +93,22 @@ describe("ws connect policy", () => {
       }).kind,
     ).toBe("allow");
 
+    // Control UI with allowInsecureAuth, connection from trusted proxy (e.g. gateway-nginx) -> allowed.
+    expect(
+      evaluateMissingDeviceIdentity({
+        hasDeviceIdentity: false,
+        role: "operator",
+        isControlUi: true,
+        controlUiAuthPolicy: controlUiStrict,
+        trustedProxyAuthOk: false,
+        sharedAuthOk: true,
+        authOk: true,
+        hasSharedAuth: true,
+        isLocalClient: false,
+        isFromTrustedProxy: true,
+      }).kind,
+    ).toBe("allow");
+
     // Control UI without allowInsecureAuth, even on localhost -> rejected.
     const controlUiNoInsecure = resolveControlUiAuthPolicy({
       isControlUi: true,

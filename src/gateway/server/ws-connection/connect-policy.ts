@@ -75,6 +75,8 @@ export function evaluateMissingDeviceIdentity(params: {
   authOk: boolean;
   hasSharedAuth: boolean;
   isLocalClient: boolean;
+  /** True when the direct TCP connection is from a trusted proxy (e.g. gateway-nginx). */
+  isFromTrustedProxy?: boolean;
 }): MissingDeviceIdentityDecision {
   if (params.hasDeviceIdentity) {
     return { kind: "allow" };
@@ -83,12 +85,13 @@ export function evaluateMissingDeviceIdentity(params: {
     return { kind: "allow" };
   }
   if (params.isControlUi && !params.controlUiAuthPolicy.allowBypass) {
-    // Allow localhost Control UI connections when allowInsecureAuth is configured.
-    // Localhost has no network interception risk, and browser SubtleCrypto
-    // (needed for device identity) is unavailable in insecure HTTP contexts.
-    // Remote connections are still rejected to preserve the MitM protection
-    // that the security fix (#20684) intended.
-    if (!params.controlUiAuthPolicy.allowInsecureAuthConfigured || !params.isLocalClient) {
+    // Allow localhost or trusted-proxy Control UI when allowInsecureAuth is configured.
+    // Localhost has no network interception risk; a trusted proxy (e.g. OAuth nginx) has
+    // already authenticated the user and injected the gateway token, so token-only is acceptable.
+    const allowedWithoutDevice =
+      params.controlUiAuthPolicy.allowInsecureAuthConfigured &&
+      (params.isLocalClient || params.isFromTrustedProxy === true);
+    if (!allowedWithoutDevice) {
       return { kind: "reject-control-ui-insecure-auth" };
     }
   }
