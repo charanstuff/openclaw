@@ -17,6 +17,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/node && chmod 0440 /etc/sudoers.d/node
 
+# When compose sets HOME=/home/openclaw, Go and other tools need a writable home.
+# Create it and give ownership to the app user so e.g. go install can create $HOME/go.
+RUN mkdir -p /home/openclaw && chown node:node /home/openclaw
+
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \

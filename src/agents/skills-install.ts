@@ -4,7 +4,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resolveBrewExecutable } from "../infra/brew.js";
 import { runCommandWithTimeout, type CommandOptions } from "../process/exec.js";
 import { scanDirectoryWithSummary } from "../security/skill-scanner.js";
-import { resolveUserPath } from "../utils.js";
+import { ensureDir, resolveConfigDir, resolveUserPath } from "../utils.js";
 import { installDownloadSpec } from "./skills-install-download.js";
 import { formatInstallFailureMessage } from "./skills-install-output.js";
 import {
@@ -15,6 +15,7 @@ import {
   type SkillInstallSpec,
   type SkillsInstallPreferences,
 } from "./skills.js";
+import { resolveSkillToolsRootDir } from "./skills/tools-dir.js";
 
 export type SkillInstallRequest = {
   workspaceDir: string;
@@ -459,11 +460,23 @@ export async function installSkill(params: SkillInstallRequest): Promise<SkillIn
   }
 
   let env: NodeJS.ProcessEnv | undefined;
-  if (spec.kind === "go" && brewExe) {
-    const brewBin = await resolveBrewBinDir(timeoutMs, brewExe);
-    if (brewBin) {
-      env = { GOBIN: brewBin };
+  if (spec.kind === "go") {
+    const toolsRoot = resolveSkillToolsRootDir(entry);
+    const goPath = path.join(toolsRoot, "go");
+    let goBin: string;
+    if (brewExe) {
+      const brewBin = await resolveBrewBinDir(timeoutMs, brewExe);
+      goBin = brewBin ?? path.join(toolsRoot, "bin");
+    } else {
+      goBin = path.join(resolveConfigDir(), "tools", "bin");
     }
+    await ensureDir(goPath);
+    await ensureDir(goBin);
+    env = {
+      GOPATH: goPath,
+      GOMODCACHE: path.join(goPath, "pkg", "mod"),
+      GOBIN: goBin,
+    };
   }
 
   return withWarnings(await executeInstallCommand({ argv, timeoutMs, env }), warnings);
