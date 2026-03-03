@@ -30,7 +30,8 @@
     "dist/",
     "docs/",
     "extensions/",
-    "skills/"
+    "skills/",
+    "skills-linux/"
   ],
   "type": "module",
   "main": "dist/index.js",

@@ -33,6 +33,23 @@ export type BundledSkillsResolveOptions = {
   execPath?: string;
 };
 
+const PLATFORM_SKILLS_DIR = process.platform === "linux" ? "skills-linux" : "skills";
+
+function resolveBundledSkillsDirWithBase(baseDir: string): string | undefined {
+  // On Linux prefer skills-linux so EC2/Docker can use Linux install paths (apt, go, etc.).
+  if (PLATFORM_SKILLS_DIR !== "skills") {
+    const platformDir = path.join(baseDir, PLATFORM_SKILLS_DIR);
+    if (fs.existsSync(platformDir) && looksLikeSkillsDir(platformDir)) {
+      return platformDir;
+    }
+  }
+  const defaultDir = path.join(baseDir, "skills");
+  if (looksLikeSkillsDir(defaultDir)) {
+    return defaultDir;
+  }
+  return undefined;
+}
+
 export function resolveBundledSkillsDir(
   opts: BundledSkillsResolveOptions = {},
 ): string | undefined {
@@ -41,19 +58,19 @@ export function resolveBundledSkillsDir(
     return override;
   }
 
-  // bun --compile: ship a sibling `skills/` next to the executable.
+  // bun --compile: ship a sibling `skills/` or `skills-linux/` next to the executable.
   try {
     const execPath = opts.execPath ?? process.execPath;
     const execDir = path.dirname(execPath);
-    const sibling = path.join(execDir, "skills");
-    if (fs.existsSync(sibling)) {
-      return sibling;
+    const resolved = resolveBundledSkillsDirWithBase(execDir);
+    if (resolved) {
+      return resolved;
     }
   } catch {
     // ignore
   }
 
-  // npm/dev: resolve `<packageRoot>/skills` relative to this module.
+  // npm/dev: resolve `<packageRoot>/skills` or `<packageRoot>/skills-linux` relative to this module.
   try {
     const moduleUrl = opts.moduleUrl ?? import.meta.url;
     const moduleDir = path.dirname(fileURLToPath(moduleUrl));
@@ -65,16 +82,16 @@ export function resolveBundledSkillsDir(
       cwd,
     });
     if (packageRoot) {
-      const candidate = path.join(packageRoot, "skills");
-      if (looksLikeSkillsDir(candidate)) {
-        return candidate;
+      const resolved = resolveBundledSkillsDirWithBase(packageRoot);
+      if (resolved) {
+        return resolved;
       }
     }
     let current = moduleDir;
     for (let depth = 0; depth < 6; depth += 1) {
-      const candidate = path.join(current, "skills");
-      if (looksLikeSkillsDir(candidate)) {
-        return candidate;
+      const resolved = resolveBundledSkillsDirWithBase(current);
+      if (resolved) {
+        return resolved;
       }
       const next = path.dirname(current);
       if (next === current) {

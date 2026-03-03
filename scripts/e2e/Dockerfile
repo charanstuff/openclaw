@@ -12,6 +12,7 @@ COPY test ./test
 COPY scripts ./scripts
 COPY docs ./docs
 COPY skills ./skills
+COPY skills-linux ./skills-linux
 COPY patches ./patches
 COPY ui ./ui
 COPY extensions/memory-core ./extensions/memory-core
