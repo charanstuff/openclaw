@@ -9,6 +9,14 @@ RUN corepack enable
 WORKDIR /app
 RUN chown node:node /app
 
+# Install sudo so skill installers can use apt-get via sudo inside the container.
+# Grant the bundled 'node' user passwordless sudo to allow controlled package installs
+# (e.g., installing Go when running skill installers that need it).
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+RUN echo "node ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/node && chmod 0440 /etc/sudoers.d/node
+
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \
