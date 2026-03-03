@@ -21,6 +21,10 @@ RUN echo "node ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/node && chmod 0440 /etc/s
 # Create it and give ownership to the app user so e.g. go install can create $HOME/go.
 RUN mkdir -p /home/openclaw && chown node:node /home/openclaw
 
+# Go 1.21+ required for skills that use stdlib "slices" (e.g. gog). Debian's golang-go is 1.19.
+RUN curl -sSL https://go.dev/dl/go1.22.5.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \
