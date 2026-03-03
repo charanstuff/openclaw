@@ -24,18 +24,36 @@ export type CdpSendFn = (
 
 export function getHeadersWithAuth(url: string, headers: Record<string, string> = {}) {
   const relayHeaders = getChromeExtensionRelayAuthHeaders(url);
-  const mergedHeaders = { ...relayHeaders, ...headers };
+  let mergedHeaders = { ...relayHeaders, ...headers };
   try {
     const parsed = new URL(url);
     const hasAuthHeader = Object.keys(mergedHeaders).some(
       (key) => key.toLowerCase() === "authorization",
     );
-    if (hasAuthHeader) {
-      return mergedHeaders;
-    }
-    if (parsed.username || parsed.password) {
+    if (!hasAuthHeader && (parsed.username || parsed.password)) {
       const auth = Buffer.from(`${parsed.username}:${parsed.password}`).toString("base64");
-      return { ...mergedHeaders, Authorization: `Basic ${auth}` };
+      mergedHeaders = { ...mergedHeaders, Authorization: `Basic ${auth}` };
+    }
+
+    // Newer Chromium builds reject DevTools HTTP requests unless the Host header
+    // is "localhost" or an IP address. When talking to a remote/headless browser
+    // via a Docker service name (for example, http://chromium:9222), this can
+    // cause "Host header is specified and is not an IP address or localhost".
+    //
+    // To keep things working in containerized setups, force a safe Host header
+    // for CDP HTTP calls when the target host is not loopback.
+    const hasHostHeader = Object.keys(mergedHeaders).some((key) => key.toLowerCase() === "host");
+    if (!hasHostHeader) {
+      const hostname = parsed.hostname;
+      if (!isLoopbackHost(hostname)) {
+        const port =
+          parsed.port && Number.parseInt(parsed.port, 10) > 0
+            ? parsed.port
+            : parsed.protocol === "https:"
+              ? "443"
+              : "80";
+        mergedHeaders = { ...mergedHeaders, Host: `127.0.0.1:${port}` };
+      }
     }
   } catch {
     // ignore
