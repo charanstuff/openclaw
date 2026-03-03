@@ -33,6 +33,7 @@ import {
   mintCanvasCapabilityToken,
 } from "../../canvas-capability.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
+import { READ_SCOPE, WRITE_SCOPE } from "../../method-scopes.js";
 import {
   isLocalishHost,
   isLoopbackAddress,
@@ -532,9 +533,6 @@ export function attachGatewayWsMessageHandler(params: {
           }
         };
         const handleMissingDeviceIdentity = (): boolean => {
-          if (!device) {
-            clearUnboundScopes();
-          }
           const trustedProxyAuthOk = isTrustedProxyControlUiOperatorAuth({
             isControlUi,
             role,
@@ -554,6 +552,9 @@ export function attachGatewayWsMessageHandler(params: {
             isLocalClient,
             isFromTrustedProxy: remoteIsTrustedProxy,
           });
+          if (!device && decision.kind !== "allow") {
+            clearUnboundScopes();
+          }
           if (decision.kind === "allow") {
             return true;
           }
@@ -585,6 +586,12 @@ export function attachGatewayWsMessageHandler(params: {
         };
         if (!handleMissingDeviceIdentity()) {
           return;
+        }
+        // Control UI from trusted proxy (OAuth + token) with no device often sends no scopes;
+        // grant default operator read/write so the UI can function without requiring device pairing.
+        if (isControlUi && !device && remoteIsTrustedProxy && scopes.length === 0) {
+          scopes = [READ_SCOPE, WRITE_SCOPE];
+          connectParams.scopes = scopes;
         }
         if (device) {
           const rejectDeviceAuthInvalid = (reason: string, message: string) => {
