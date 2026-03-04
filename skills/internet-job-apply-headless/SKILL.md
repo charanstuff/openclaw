@@ -150,8 +150,11 @@ This skill is designed for environments where:
 - Take a NEW snapshot immediately before every click/type/submit action.
 - Take a NEW snapshot after any navigation, modal/dialog open, page section expand, file upload,
   or form step transition.
-- If any action fails with "Element e### not found/not visible", STOP and take a new snapshot,
-  then re-locate the target element.
+- **Refs for fill/click/upload:** You can use either snapshot format. **AI** snapshots use refs
+  like `e1`, `e2`, …; **aria** snapshots use refs like `ax1`, `ax2`, …. Both work for fill, click,
+  and file upload — use the refs from the snapshot you just took (e.g. `e4` or `ax8`).
+- If any action fails with "Element e### not found/not visible" (or ax###), STOP and take a new
+  snapshot, then re-locate the target element.
 
 ### C. File upload rule (mandatory)
 

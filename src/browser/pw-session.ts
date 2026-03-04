@@ -514,6 +514,10 @@ export function refLocator(page: Page, ref: string) {
     return info.nth !== undefined ? locator.nth(info.nth) : locator;
   }
 
+  if (/^ax\d+$/.test(normalized)) {
+    return page.locator(`[data-ax-ref="${normalized}"]`);
+  }
+
   return page.locator(`aria-ref=${normalized}`);
 }
 

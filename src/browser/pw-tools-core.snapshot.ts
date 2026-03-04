@@ -37,7 +37,32 @@ export async function snapshotAriaViaPlaywright(opts: {
       nodes?: RawAXNode[];
     };
     const nodes = Array.isArray(res?.nodes) ? res.nodes : [];
-    return { nodes: formatAriaSnapshot(nodes, limit) };
+    const out = formatAriaSnapshot(nodes, limit);
+    const withBackendId = out.filter(
+      (n): n is AriaSnapshotNode & { backendDOMNodeId: number } =>
+        typeof n.backendDOMNodeId === "number" && n.ref.length > 0,
+    );
+    if (withBackendId.length > 0) {
+      await session.send("DOM.enable").catch(() => {});
+      const pushed = (await session.send("DOM.pushNodesByBackendIdsToFrontend", {
+        backendNodeIds: withBackendId.map((n) => n.backendDOMNodeId),
+      })) as { nodeIds?: number[] };
+      const nodeIds = Array.isArray(pushed?.nodeIds) ? pushed.nodeIds : [];
+      for (let i = 0; i < withBackendId.length && i < nodeIds.length; i++) {
+        const nodeId = nodeIds[i];
+        const ref = withBackendId[i].ref;
+        if (nodeId != null && ref) {
+          await session
+            .send("DOM.setAttributeValue", {
+              nodeId,
+              name: "data-ax-ref",
+              value: ref,
+            })
+            .catch(() => {});
+        }
+      }
+    }
+    return { nodes: out };
   } finally {
     await session.detach().catch(() => {});
   }

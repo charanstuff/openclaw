@@ -256,18 +256,82 @@ export function formatAriaSnapshot(nodes: RawAXNode[], limit: number): AriaSnaps
   return out;
 }
 
+/**
+ * Injects data-ax-ref attributes into the page so that refs from an aria-format
+ * snapshot (ax1, ax2, ...) can be resolved by Playwright for fill/click/etc.
+ * Call this after taking an aria snapshot so that later act() calls with ax refs work.
+ */
+export async function injectAriaRefsInPage(opts: {
+  wsUrl: string;
+  nodes: AriaSnapshotNode[];
+}): Promise<void> {
+  const withBackendId = opts.nodes.filter(
+    (n): n is AriaSnapshotNode & { backendDOMNodeId: number } =>
+      typeof n.backendDOMNodeId === "number" && n.ref.length > 0,
+  );
+  if (withBackendId.length === 0) {
+    return;
+  }
+  await withCdpSocket(opts.wsUrl, async (send) => {
+    await send("DOM.enable").catch(() => {});
+    const backendNodeIds = withBackendId.map((n) => n.backendDOMNodeId);
+    const pushed = (await send("DOM.pushNodesByBackendIdsToFrontend", {
+      backendNodeIds,
+    })) as { nodeIds?: number[] };
+    const nodeIds = Array.isArray(pushed?.nodeIds) ? pushed.nodeIds : [];
+    for (let i = 0; i < withBackendId.length && i < nodeIds.length; i++) {
+      const nodeId = nodeIds[i];
+      const ref = withBackendId[i].ref;
+      if (nodeId != null && ref) {
+        await send("DOM.setAttributeValue", {
+          nodeId,
+          name: "data-ax-ref",
+          value: ref,
+        }).catch(() => {});
+      }
+    }
+  });
+}
+
 export async function snapshotAria(opts: {
   wsUrl: string;
   limit?: number;
+  injectRefs?: boolean;
 }): Promise<{ nodes: AriaSnapshotNode[] }> {
   const limit = Math.max(1, Math.min(2000, Math.floor(opts.limit ?? 500)));
+  const injectRefs = opts.injectRefs !== false;
   return await withCdpSocket(opts.wsUrl, async (send) => {
     await send("Accessibility.enable").catch(() => {});
     const res = (await send("Accessibility.getFullAXTree")) as {
       nodes?: RawAXNode[];
     };
     const nodes = Array.isArray(res?.nodes) ? res.nodes : [];
-    return { nodes: formatAriaSnapshot(nodes, limit) };
+    const out = formatAriaSnapshot(nodes, limit);
+    if (injectRefs && out.length > 0) {
+      const withBackendId = out.filter(
+        (n): n is AriaSnapshotNode & { backendDOMNodeId: number } =>
+          typeof n.backendDOMNodeId === "number" && n.ref.length > 0,
+      );
+      if (withBackendId.length > 0) {
+        await send("DOM.enable").catch(() => {});
+        const pushed = (await send("DOM.pushNodesByBackendIdsToFrontend", {
+          backendNodeIds: withBackendId.map((n) => n.backendDOMNodeId),
+        })) as { nodeIds?: number[] };
+        const nodeIds = Array.isArray(pushed?.nodeIds) ? pushed.nodeIds : [];
+        for (let i = 0; i < withBackendId.length && i < nodeIds.length; i++) {
+          const nodeId = nodeIds[i];
+          const ref = withBackendId[i].ref;
+          if (nodeId != null && ref) {
+            await send("DOM.setAttributeValue", {
+              nodeId,
+              name: "data-ax-ref",
+              value: ref,
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+    return { nodes: out };
   });
 }
 
