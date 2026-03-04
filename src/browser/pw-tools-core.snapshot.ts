@@ -44,6 +44,7 @@ export async function snapshotAriaViaPlaywright(opts: {
     );
     if (withBackendId.length > 0) {
       await session.send("DOM.enable").catch(() => {});
+      await session.send("DOM.getDocument").catch(() => {});
       const pushed = (await session.send("DOM.pushNodesByBackendIdsToFrontend", {
         backendNodeIds: withBackendId.map((n) => n.backendDOMNodeId),
       })) as { nodeIds?: number[] };

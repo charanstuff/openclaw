@@ -314,6 +314,7 @@ export async function snapshotAria(opts: {
       );
       if (withBackendId.length > 0) {
         await send("DOM.enable").catch(() => {});
+        await send("DOM.getDocument").catch(() => {});
         const pushed = (await send("DOM.pushNodesByBackendIdsToFrontend", {
           backendNodeIds: withBackendId.map((n) => n.backendDOMNodeId),
         })) as { nodeIds?: number[] };
