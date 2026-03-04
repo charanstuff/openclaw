@@ -228,7 +228,7 @@ describe("browser tool snapshot maxChars", () => {
 
     expect(gatewayMocks.callGatewayTool).toHaveBeenCalledWith(
       "node.invoke",
-      { timeoutMs: 20000 },
+      { timeoutMs: 180000 },
       expect.objectContaining({
         nodeId: "node-1",
         command: "browser.proxy",

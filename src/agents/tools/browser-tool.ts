@@ -90,7 +90,7 @@ type BrowserProxyResult = {
   files?: BrowserProxyFile[];
 };
 
-const DEFAULT_BROWSER_PROXY_TIMEOUT_MS = 20_000;
+const DEFAULT_BROWSER_PROXY_TIMEOUT_MS = 180_000;
 
 type BrowserNodeTarget = {
   nodeId: string;
