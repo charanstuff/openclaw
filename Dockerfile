@@ -43,6 +43,10 @@ USER node
 # Docker builds on small VMs may otherwise fail with "Killed" (exit 137).
 RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
 
+# Remove node-llama-cpp and platform binaries (~650MB+). Optional for local embeddings;
+# headless/EC2 gateway does not need them and runner disk can run out during layer extract.
+RUN rm -rf node_modules/node-llama-cpp node_modules/@node-llama-cpp node_modules/.pnpm/node-llama-cpp@* node_modules/.pnpm/@node-llama-cpp* 2>/dev/null || true
+
 # Optionally install Chromium and Xvfb for browser automation.
 # Build with: docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 ...
 # Adds ~300MB but eliminates the 60-90s Playwright install on every container start.
