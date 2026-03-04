@@ -164,18 +164,33 @@ export async function runBrowserProxyCommand(paramsJSON?: string | null): Promis
   }
 
   const dispatcher = createBrowserRouteDispatcher(createBrowserControlContext());
-  const response = await withTimeout(
-    (signal) =>
-      dispatcher.dispatch({
-        method: method === "DELETE" ? "DELETE" : method === "POST" ? "POST" : "GET",
-        path,
-        query,
-        body,
-        signal,
-      }),
-    params.timeoutMs,
-    "browser proxy request",
-  );
+  const startedAt = Date.now();
+  const label = `${method} ${path}`;
+  let response;
+  try {
+    response = await withTimeout(
+      (signal) =>
+        dispatcher.dispatch({
+          method: method === "DELETE" ? "DELETE" : method === "POST" ? "POST" : "GET",
+          path,
+          query,
+          body,
+          signal,
+        }),
+      params.timeoutMs,
+      "browser proxy request",
+    );
+  } catch (err) {
+    const elapsed = Date.now() - startedAt;
+    // eslint-disable-next-line no-console
+    console.error(`[browser-proxy] ${label} failed after ${elapsed}ms: ${String(err)}`);
+    throw err;
+  }
+  {
+    const elapsed = Date.now() - startedAt;
+    // eslint-disable-next-line no-console
+    console.log(`[browser-proxy] ${label} succeeded in ${elapsed}ms`);
+  }
   if (response.status >= 400) {
     const message =
       response.body && typeof response.body === "object" && "error" in response.body
