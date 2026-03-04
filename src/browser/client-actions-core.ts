@@ -90,6 +90,8 @@ export type BrowserDownloadPayload = {
 
 type BrowserDownloadResult = { ok: true; targetId: string; download: BrowserDownloadPayload };
 
+const DEFAULT_BROWSER_ACTION_TIMEOUT_MS = 180_000;
+
 async function postDownloadRequest(
   baseUrl: string | undefined,
   route: "/wait/download" | "/download",
@@ -101,7 +103,7 @@ async function postDownloadRequest(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
 
@@ -118,7 +120,7 @@ export async function browserNavigate(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: opts.url, targetId: opts.targetId }),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
 
@@ -142,7 +144,7 @@ export async function browserArmDialog(
       targetId: opts.targetId,
       timeoutMs: opts.timeoutMs,
     }),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
 
@@ -170,7 +172,7 @@ export async function browserArmFileChooser(
       targetId: opts.targetId,
       timeoutMs: opts.timeoutMs,
     }),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
 
@@ -228,7 +230,7 @@ export async function browserAct(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
 
@@ -254,6 +256,6 @@ export async function browserScreenshotAction(
       element: opts.element,
       type: opts.type,
     }),
-    timeoutMs: 20000,
+    timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   });
 }
