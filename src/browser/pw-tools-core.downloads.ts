@@ -152,14 +152,65 @@ export async function armFileUploadViaPlaywright(opts: {
   const state = ensurePageState(page);
   const timeout = Math.max(500, Math.min(120_000, opts.timeoutMs ?? 120_000));
 
+  const hasPaths = Array.isArray(opts.paths) && opts.paths.length > 0;
+
   logPw.info("armFileUpload start", {
-    paths: opts.paths?.length ?? 0,
+    paths: hasPaths ? opts.paths!.length : 0,
     timeoutMs: timeout,
     targetId: opts.targetId,
   });
 
+  let resolvedPaths: string[] | undefined;
+
+  if (hasPaths) {
+    const uploadPathsResult = await resolveStrictExistingPathsWithinRoot({
+      rootDir: DEFAULT_UPLOAD_DIR,
+      requestedPaths: opts.paths!,
+      scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
+    });
+    if (!uploadPathsResult.ok) {
+      logPw.warn("armFileUpload path resolution failed", {
+        targetId: opts.targetId,
+        error: uploadPathsResult.error,
+      });
+      return;
+    }
+    resolvedPaths = uploadPathsResult.paths;
+
+    try {
+      const inputLocator = page.locator('input[type="file"]').first();
+      const count = await inputLocator.count();
+      if (count > 0) {
+        await inputLocator.setInputFiles(resolvedPaths);
+        try {
+          const handle = await inputLocator.elementHandle();
+          if (handle) {
+            await handle.evaluate((el) => {
+              el.dispatchEvent(new Event("input", { bubbles: true }));
+              el.dispatchEvent(new Event("change", { bubbles: true }));
+            });
+          }
+        } catch {
+          // Best-effort for sites that don't react to setInputFiles alone.
+        }
+        logPw.info("armFileUpload direct input success", {
+          paths: resolvedPaths.length,
+          targetId: opts.targetId,
+        });
+        return;
+      }
+    } catch (err) {
+      logPw.warn("armFileUpload direct input failed", {
+        targetId: opts.targetId,
+        error: String(err),
+      });
+    }
+  }
+
   state.armIdUpload = bumpUploadArmId();
   const armId = state.armIdUpload;
+
+  const chooserPaths = resolvedPaths;
 
   void page
     .waitForEvent("filechooser", { timeout })
@@ -167,7 +218,7 @@ export async function armFileUploadViaPlaywright(opts: {
       if (state.armIdUpload !== armId) {
         return;
       }
-      if (!opts.paths?.length) {
+      if (!chooserPaths?.length) {
         // Playwright removed `FileChooser.cancel()`; best-effort close the chooser instead.
         try {
           await page.keyboard.press("Escape");
@@ -176,20 +227,7 @@ export async function armFileUploadViaPlaywright(opts: {
         }
         return;
       }
-      const uploadPathsResult = await resolveStrictExistingPathsWithinRoot({
-        rootDir: DEFAULT_UPLOAD_DIR,
-        requestedPaths: opts.paths,
-        scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
-      });
-      if (!uploadPathsResult.ok) {
-        try {
-          await page.keyboard.press("Escape");
-        } catch {
-          // Best-effort.
-        }
-        return;
-      }
-      await fileChooser.setFiles(uploadPathsResult.paths);
+      await fileChooser.setFiles(chooserPaths);
       try {
         const input =
           typeof fileChooser.element === "function"
