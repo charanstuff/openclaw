@@ -48,6 +48,22 @@ export async function clickViaPlaywright(opts: {
   const timeout = Math.max(500, Math.min(60_000, Math.floor(opts.timeoutMs ?? 8000)));
   logPw.info("click start", { ref, timeoutMs: timeout, targetId: opts.targetId });
   try {
+    const tagAndType = await locator.evaluate((el) => {
+      const tag = el.tagName.toLowerCase();
+      const type = (el as HTMLInputElement).type?.toLowerCase?.() ?? "";
+      return { tag, type };
+    });
+    if (tagAndType.tag === "input" && tagAndType.type === "file") {
+      logPw.info(
+        "click target is input[type=file]; skipping click (upload should use setInputFiles/upload helpers)",
+        {
+          ref,
+          targetId: opts.targetId,
+        },
+      );
+      return;
+    }
+
     if (opts.doubleClick) {
       await locator.dblclick({
         timeout,
