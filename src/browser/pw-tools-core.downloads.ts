@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Page } from "playwright-core";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { DEFAULT_UPLOAD_DIR, resolveStrictExistingPathsWithinRoot } from "./paths.js";
 import {
   ensurePageState,
@@ -18,6 +19,8 @@ import {
   requireRef,
   toAIFriendlyError,
 } from "./pw-tools-core.shared.js";
+
+const logPw = createSubsystemLogger("browser").child("pw");
 
 function sanitizeDownloadFileName(fileName: string): string {
   const trimmed = String(fileName ?? "").trim();
@@ -149,6 +152,12 @@ export async function armFileUploadViaPlaywright(opts: {
   const state = ensurePageState(page);
   const timeout = Math.max(500, Math.min(120_000, opts.timeoutMs ?? 120_000));
 
+  logPw.info("armFileUpload start", {
+    paths: opts.paths?.length ?? 0,
+    timeoutMs: timeout,
+    targetId: opts.targetId,
+  });
+
   state.armIdUpload = bumpUploadArmId();
   const armId = state.armIdUpload;
 
@@ -196,8 +205,12 @@ export async function armFileUploadViaPlaywright(opts: {
         // Best-effort for sites that don't react to setFiles alone.
       }
     })
-    .catch(() => {
-      // Ignore timeouts; the chooser may never appear.
+    .catch((err) => {
+      logPw.warn("armFileUpload filechooser wait failed", {
+        timeoutMs: timeout,
+        targetId: opts.targetId,
+        error: String(err),
+      });
     });
 }
 

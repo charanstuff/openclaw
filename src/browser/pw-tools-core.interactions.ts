@@ -1,3 +1,4 @@
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { BrowserFormField } from "./client-actions-core.js";
 import { DEFAULT_UPLOAD_DIR, resolveStrictExistingPathsWithinRoot } from "./paths.js";
 import {
@@ -8,6 +9,8 @@ import {
   restoreRoleRefsForTarget,
 } from "./pw-session.js";
 import { normalizeTimeoutMs, requireRef, toAIFriendlyError } from "./pw-tools-core.shared.js";
+
+const logPw = createSubsystemLogger("browser").child("pw");
 
 export async function highlightViaPlaywright(opts: {
   cdpUrl: string;
@@ -43,6 +46,7 @@ export async function clickViaPlaywright(opts: {
   const ref = requireRef(opts.ref);
   const locator = refLocator(page, ref);
   const timeout = Math.max(500, Math.min(60_000, Math.floor(opts.timeoutMs ?? 8000)));
+  logPw.info("click start", { ref, timeoutMs: timeout, targetId: opts.targetId });
   try {
     if (opts.doubleClick) {
       await locator.dblclick({
@@ -58,6 +62,7 @@ export async function clickViaPlaywright(opts: {
       });
     }
   } catch (err) {
+    logPw.warn("click failed", { ref, error: String(err) });
     throw toAIFriendlyError(err, ref);
   }
 }
@@ -186,6 +191,8 @@ export async function fillFormViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   const timeout = Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000));
+  const refs = opts.fields.map((f) => f.ref).filter(Boolean);
+  logPw.info("fill start", { refs, timeoutMs: timeout, targetId: opts.targetId });
   for (const field of opts.fields) {
     const ref = field.ref.trim();
     const type = field.type.trim();
@@ -206,6 +213,7 @@ export async function fillFormViaPlaywright(opts: {
       try {
         await locator.setChecked(checked, { timeout });
       } catch (err) {
+        logPw.warn("fill failed", { ref, type, error: String(err) });
         throw toAIFriendlyError(err, ref);
       }
       continue;
@@ -213,6 +221,7 @@ export async function fillFormViaPlaywright(opts: {
     try {
       await locator.fill(value, { timeout });
     } catch (err) {
+      logPw.warn("fill failed", { ref, type, error: String(err) });
       throw toAIFriendlyError(err, ref);
     }
   }

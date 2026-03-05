@@ -1,8 +1,11 @@
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { BrowserRouteContext } from "../server-context.js";
 import { readBody, resolveTargetIdFromBody, withPlaywrightRouteContext } from "./agent.shared.js";
 import { DEFAULT_UPLOAD_DIR, resolveExistingPathsWithinRoot } from "./path-output.js";
 import type { BrowserRouteRegistrar } from "./types.js";
 import { jsonError, toBoolean, toNumber, toStringArray, toStringOrEmpty } from "./utils.js";
+
+const logHooks = createSubsystemLogger("browser").child("hooks");
 
 export function registerBrowserAgentActHookRoutes(
   app: BrowserRouteRegistrar,
@@ -27,44 +30,59 @@ export function registerBrowserAgentActHookRoutes(
       targetId,
       feature: "file chooser hook",
       run: async ({ cdpUrl, tab, pw }) => {
-        const uploadPathsResult = await resolveExistingPathsWithinRoot({
-          rootDir: DEFAULT_UPLOAD_DIR,
-          requestedPaths: paths,
-          scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
+        logHooks.info("file-chooser start", {
+          ref: ref || undefined,
+          inputRef: inputRef || undefined,
+          pathsCount: paths.length,
+          targetId: tab.targetId,
         });
-        if (!uploadPathsResult.ok) {
-          res.status(400).json({ error: uploadPathsResult.error });
-          return;
-        }
-        const resolvedPaths = uploadPathsResult.paths;
-
-        if (inputRef || element) {
-          if (ref) {
-            return jsonError(res, 400, "ref cannot be combined with inputRef/element");
+        try {
+          const uploadPathsResult = await resolveExistingPathsWithinRoot({
+            rootDir: DEFAULT_UPLOAD_DIR,
+            requestedPaths: paths,
+            scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
+          });
+          if (!uploadPathsResult.ok) {
+            res.status(400).json({ error: uploadPathsResult.error });
+            return;
           }
-          await pw.setInputFilesViaPlaywright({
-            cdpUrl,
-            targetId: tab.targetId,
-            inputRef,
-            element,
-            paths: resolvedPaths,
-          });
-        } else {
-          await pw.armFileUploadViaPlaywright({
-            cdpUrl,
-            targetId: tab.targetId,
-            paths: resolvedPaths,
-            timeoutMs: timeoutMs ?? undefined,
-          });
-          if (ref) {
-            await pw.clickViaPlaywright({
+          const resolvedPaths = uploadPathsResult.paths;
+
+          if (inputRef || element) {
+            if (ref) {
+              return jsonError(res, 400, "ref cannot be combined with inputRef/element");
+            }
+            await pw.setInputFilesViaPlaywright({
               cdpUrl,
               targetId: tab.targetId,
-              ref,
+              inputRef,
+              element,
+              paths: resolvedPaths,
             });
+          } else {
+            await pw.armFileUploadViaPlaywright({
+              cdpUrl,
+              targetId: tab.targetId,
+              paths: resolvedPaths,
+              timeoutMs: timeoutMs ?? undefined,
+            });
+            if (ref) {
+              await pw.clickViaPlaywright({
+                cdpUrl,
+                targetId: tab.targetId,
+                ref,
+              });
+            }
           }
+          res.json({ ok: true });
+        } catch (err) {
+          logHooks.warn("file-chooser failed", {
+            ref: ref || undefined,
+            targetId: tab.targetId,
+            error: String(err),
+          });
+          throw err;
         }
-        res.json({ ok: true });
       },
     });
   });
