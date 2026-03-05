@@ -25,11 +25,30 @@ import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
 import { DEFAULT_UPLOAD_DIR, resolveExistingPathsWithinRoot } from "../../browser/paths.js";
 import { applyBrowserProxyPaths, persistBrowserProxyFiles } from "../../browser/proxy-files.js";
 import { loadConfig } from "../../config/config.js";
+import { getAgentRunId } from "../../infra/agent-run-storage.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { wrapExternalContent } from "../../security/external-content.js";
+import {
+  checkBrowserActionLimit,
+  getMaxRetriesPerAction,
+  incrementBrowserActionCount,
+} from "./browser-tool-limits.js";
+import {
+  formatSanitizedSnapshotAi,
+  isSanitizeEnabled,
+  sanitizeActResult,
+  sanitizeConsole,
+  sanitizeSnapshotAi,
+  sanitizeSnapshotAria,
+  writeDebugPayloadIfEnabled,
+} from "./browser-tool-sanitizer.js";
 import { BrowserToolSchema } from "./browser-tool.schema.js";
 import { type AnyAgentTool, imageResultFromFile, jsonResult, readStringParam } from "./common.js";
 import { callGatewayTool } from "./gateway.js";
 import { listNodes, resolveNodeIdFromList, type NodeListNode } from "./nodes-utils.js";
+
+const logBrowserTool = createSubsystemLogger("browser-tool");
+const LOG_RESULT_SIZE = process.env.OPENCLAW_BROWSER_LOG_RESULT_SIZE === "1";
 
 function wrapBrowserExternalJson(params: {
   kind: "snapshot" | "console" | "tabs";
@@ -269,6 +288,13 @@ export function createBrowserTool(opts?: {
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
+      const runId = getAgentRunId();
+      const limitCheck = checkBrowserActionLimit(runId);
+      if (!limitCheck.ok) {
+        throw new Error(limitCheck.message);
+      }
+      incrementBrowserActionCount(runId);
+
       const profile = readStringParam(params, "profile");
       const requestedNode = readStringParam(params, "node");
       let target = readStringParam(params, "target") as "sandbox" | "host" | "node" | undefined;
@@ -524,11 +550,35 @@ export function createBrowserTool(opts?: {
                 profile,
               });
           if (snapshot.format === "ai") {
+            await writeDebugPayloadIfEnabled("snapshot-ai", snapshot);
             const extractedText = snapshot.snapshot ?? "";
-            const wrappedSnapshot = wrapExternalContent(extractedText, {
-              source: "browser",
-              includeWarning: true,
-            });
+            let textForPrompt: string;
+            if (isSanitizeEnabled()) {
+              const sanitized = sanitizeSnapshotAi({
+                snapshot: extractedText,
+                url: snapshot.url,
+                targetId: snapshot.targetId,
+                refs: snapshot.refs,
+                stats: snapshot.stats,
+                truncated: snapshot.truncated,
+              });
+              textForPrompt = wrapExternalContent(formatSanitizedSnapshotAi(sanitized), {
+                source: "browser",
+                includeWarning: true,
+              });
+            } else {
+              textForPrompt = wrapExternalContent(extractedText, {
+                source: "browser",
+                includeWarning: true,
+              });
+            }
+            if (LOG_RESULT_SIZE) {
+              logBrowserTool.info("browser result size", {
+                action: "snapshot",
+                format: "ai",
+                chars: textForPrompt.length,
+              });
+            }
             const safeDetails = {
               ok: true,
               format: snapshot.format,
@@ -554,28 +604,46 @@ export function createBrowserTool(opts?: {
               return await imageResultFromFile({
                 label: "browser:snapshot",
                 path: snapshot.imagePath,
-                extraText: wrappedSnapshot,
+                extraText: textForPrompt,
                 details: safeDetails,
               });
             }
             return {
-              content: [{ type: "text" as const, text: wrappedSnapshot }],
+              content: [{ type: "text" as const, text: textForPrompt }],
               details: safeDetails,
             };
           }
           {
-            const wrapped = wrapBrowserExternalJson({
-              kind: "snapshot",
-              payload: snapshot,
-            });
-            return {
-              content: [{ type: "text" as const, text: wrapped.wrappedText }],
-              details: {
-                ...wrapped.safeDetails,
-                format: "aria",
-                targetId: snapshot.targetId,
+            await writeDebugPayloadIfEnabled("snapshot-aria", snapshot);
+            let textForPrompt: string;
+            if (isSanitizeEnabled()) {
+              const sanitizedText = sanitizeSnapshotAria({
                 url: snapshot.url,
-                nodeCount: snapshot.nodes.length,
+                targetId: snapshot.targetId,
+                nodes: snapshot.nodes,
+              });
+              textForPrompt = wrapExternalContent(sanitizedText, {
+                source: "browser",
+                includeWarning: true,
+              });
+            } else {
+              const wrapped = wrapBrowserExternalJson({
+                kind: "snapshot",
+                payload: snapshot,
+              });
+              textForPrompt = wrapped.wrappedText;
+            }
+            if (LOG_RESULT_SIZE) {
+              logBrowserTool.info("browser result size", {
+                action: "snapshot",
+                format: "aria",
+                chars: textForPrompt.length,
+              });
+            }
+            return {
+              content: [{ type: "text" as const, text: textForPrompt }],
+              details: {
+                ok: true,
                 externalContent: {
                   untrusted: true,
                   source: "browser",
@@ -583,6 +651,10 @@ export function createBrowserTool(opts?: {
                   format: "aria",
                   wrapped: true,
                 },
+                format: "aria",
+                targetId: snapshot.targetId,
+                url: snapshot.url,
+                nodeCount: snapshot.nodes.length,
               },
             };
           }
@@ -658,15 +730,30 @@ export function createBrowserTool(opts?: {
                 targetId,
               },
             })) as { ok?: boolean; targetId?: string; messages?: unknown[] };
-            const wrapped = wrapBrowserExternalJson({
-              kind: "console",
-              payload: result,
-              includeWarning: false,
-            });
+            await writeDebugPayloadIfEnabled("console", result);
+            const rawText = isSanitizeEnabled()
+              ? sanitizeConsole(result)
+              : JSON.stringify(result, null, 2);
+            const textForPrompt = isSanitizeEnabled()
+              ? wrapExternalContent(rawText, { source: "browser", includeWarning: false })
+              : wrapBrowserExternalJson({ kind: "console", payload: result, includeWarning: false })
+                  .wrappedText;
+            if (LOG_RESULT_SIZE) {
+              logBrowserTool.info("browser result size", {
+                action: "console",
+                chars: textForPrompt.length,
+              });
+            }
             return {
-              content: [{ type: "text" as const, text: wrapped.wrappedText }],
+              content: [{ type: "text" as const, text: textForPrompt }],
               details: {
-                ...wrapped.safeDetails,
+                ok: true,
+                externalContent: {
+                  untrusted: true,
+                  source: "browser",
+                  kind: "console",
+                  wrapped: true,
+                },
                 targetId: typeof result.targetId === "string" ? result.targetId : undefined,
                 messageCount: Array.isArray(result.messages) ? result.messages.length : undefined,
               },
@@ -674,15 +761,30 @@ export function createBrowserTool(opts?: {
           }
           {
             const result = await browserConsoleMessages(baseUrl, { level, targetId, profile });
-            const wrapped = wrapBrowserExternalJson({
-              kind: "console",
-              payload: result,
-              includeWarning: false,
-            });
+            await writeDebugPayloadIfEnabled("console", result);
+            const rawText = isSanitizeEnabled()
+              ? sanitizeConsole(result)
+              : JSON.stringify(result, null, 2);
+            const textForPrompt = isSanitizeEnabled()
+              ? wrapExternalContent(rawText, { source: "browser", includeWarning: false })
+              : wrapBrowserExternalJson({ kind: "console", payload: result, includeWarning: false })
+                  .wrappedText;
+            if (LOG_RESULT_SIZE) {
+              logBrowserTool.info("browser result size", {
+                action: "console",
+                chars: textForPrompt.length,
+              });
+            }
             return {
-              content: [{ type: "text" as const, text: wrapped.wrappedText }],
+              content: [{ type: "text" as const, text: textForPrompt }],
               details: {
-                ...wrapped.safeDetails,
+                ok: true,
+                externalContent: {
+                  untrusted: true,
+                  source: "browser",
+                  kind: "console",
+                  wrapped: true,
+                },
                 targetId: result.targetId,
                 messageCount: result.messages.length,
               },
@@ -783,43 +885,73 @@ export function createBrowserTool(opts?: {
           if (!request || typeof request !== "object") {
             throw new Error("request required");
           }
-          try {
-            const result = proxyRequest
-              ? await proxyRequest({
-                  method: "POST",
-                  path: "/act",
-                  profile,
-                  body: request,
-                })
-              : await browserAct(baseUrl, request as Parameters<typeof browserAct>[1], {
-                  profile,
-                });
-            return jsonResult(result);
-          } catch (err) {
-            const msg = String(err);
-            if (msg.includes("404:") && msg.includes("tab not found") && profile === "chrome") {
-              const tabs = proxyRequest
-                ? ((
-                    (await proxyRequest({
-                      method: "GET",
-                      path: "/tabs",
-                      profile,
-                    })) as { tabs?: unknown[] }
-                  ).tabs ?? [])
-                : await browserTabs(baseUrl, { profile }).catch(() => []);
-              if (!tabs.length) {
-                throw new Error(
-                  "No Chrome tabs are attached via the OpenClaw Browser Relay extension. Click the toolbar icon on the tab you want to control (badge ON), then retry.",
-                  { cause: err },
-                );
+          const maxRetries = getMaxRetriesPerAction();
+          let lastErr: unknown;
+          let result: Record<string, unknown> | undefined;
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              result = proxyRequest
+                ? ((await proxyRequest({
+                    method: "POST",
+                    path: "/act",
+                    profile,
+                    body: request,
+                  })) as Record<string, unknown>)
+                : ((await browserAct(baseUrl, request as Parameters<typeof browserAct>[1], {
+                    profile,
+                  })) as Record<string, unknown>);
+              break;
+            } catch (err) {
+              lastErr = err;
+              if (attempt === maxRetries) {
+                const msg = String(err);
+                if (msg.includes("404:") && msg.includes("tab not found") && profile === "chrome") {
+                  const tabs = proxyRequest
+                    ? ((
+                        (await proxyRequest({
+                          method: "GET",
+                          path: "/tabs",
+                          profile,
+                        })) as { tabs?: unknown[] }
+                      ).tabs ?? [])
+                    : await browserTabs(baseUrl, { profile }).catch(() => []);
+                  if (!tabs.length) {
+                    throw new Error(
+                      "No Chrome tabs are attached via the OpenClaw Browser Relay extension. Click the toolbar icon on the tab you want to control (badge ON), then retry.",
+                      { cause: err },
+                    );
+                  }
+                  throw new Error(
+                    `Chrome tab not found (stale targetId?). Run action=tabs profile="chrome" and use one of the returned targetIds.`,
+                    { cause: err },
+                  );
+                }
+                throw err;
               }
-              throw new Error(
-                `Chrome tab not found (stale targetId?). Run action=tabs profile="chrome" and use one of the returned targetIds.`,
-                { cause: err },
-              );
             }
-            throw err;
           }
+          if (result === undefined) {
+            throw lastErr;
+          }
+          await writeDebugPayloadIfEnabled("act", result);
+          if (isSanitizeEnabled()) {
+            const textForPrompt = sanitizeActResult(result);
+            if (LOG_RESULT_SIZE) {
+              logBrowserTool.info("browser result size", {
+                action: "act",
+                chars: textForPrompt.length,
+              });
+            }
+            return {
+              content: [{ type: "text" as const, text: textForPrompt }],
+              details: { ok: true, ...result },
+            };
+          }
+          if (LOG_RESULT_SIZE) {
+            const str = JSON.stringify(result);
+            logBrowserTool.info("browser result size", { action: "act", chars: str.length });
+          }
+          return jsonResult(result);
         }
         default:
           throw new Error(`Unknown action: ${action}`);

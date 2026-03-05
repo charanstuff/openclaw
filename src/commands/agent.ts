@@ -27,6 +27,7 @@ import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
+import { clearBrowserActionCount } from "../agents/tools/browser-tool-limits.js";
 import { ensureAgentWorkspace } from "../agents/workspace.js";
 import {
   formatThinkingLevels,
@@ -55,6 +56,7 @@ import {
   emitAgentEvent,
   registerAgentRunContext,
 } from "../infra/agent-events.js";
+import { runWithAgentRunIdAsync } from "../infra/agent-run-storage.js";
 import { getRemoteSkillEligibility } from "../infra/skills-remote.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
@@ -120,70 +122,76 @@ function runAgentAttempt(params: {
   });
   if (isCliProvider(params.providerOverride, params.cfg)) {
     const cliSessionId = getCliSessionId(params.sessionEntry, params.providerOverride);
-    return runCliAgent({
-      sessionId: params.sessionId,
-      sessionKey: params.sessionKey,
-      agentId: params.sessionAgentId,
-      sessionFile: params.sessionFile,
-      workspaceDir: params.workspaceDir,
-      config: params.cfg,
-      prompt: effectivePrompt,
-      provider: params.providerOverride,
-      model: params.modelOverride,
-      thinkLevel: params.resolvedThinkLevel,
-      timeoutMs: params.timeoutMs,
-      runId: params.runId,
-      extraSystemPrompt: params.opts.extraSystemPrompt,
-      cliSessionId,
-      images: params.isFallbackRetry ? undefined : params.opts.images,
-      streamParams: params.opts.streamParams,
-    });
+    return runWithAgentRunIdAsync(params.runId, () =>
+      runCliAgent({
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        agentId: params.sessionAgentId,
+        sessionFile: params.sessionFile,
+        workspaceDir: params.workspaceDir,
+        config: params.cfg,
+        prompt: effectivePrompt,
+        provider: params.providerOverride,
+        model: params.modelOverride,
+        thinkLevel: params.resolvedThinkLevel,
+        timeoutMs: params.timeoutMs,
+        runId: params.runId,
+        extraSystemPrompt: params.opts.extraSystemPrompt,
+        cliSessionId,
+        images: params.isFallbackRetry ? undefined : params.opts.images,
+        streamParams: params.opts.streamParams,
+      }),
+    );
   }
 
   const authProfileId =
     params.providerOverride === params.primaryProvider
       ? params.sessionEntry?.authProfileOverride
       : undefined;
-  return runEmbeddedPiAgent({
-    sessionId: params.sessionId,
-    sessionKey: params.sessionKey,
-    agentId: params.sessionAgentId,
-    messageChannel: params.messageChannel,
-    agentAccountId: params.runContext.accountId,
-    messageTo: params.opts.replyTo ?? params.opts.to,
-    messageThreadId: params.opts.threadId,
-    groupId: params.runContext.groupId,
-    groupChannel: params.runContext.groupChannel,
-    groupSpace: params.runContext.groupSpace,
-    spawnedBy: params.spawnedBy,
-    currentChannelId: params.runContext.currentChannelId,
-    currentThreadTs: params.runContext.currentThreadTs,
-    replyToMode: params.runContext.replyToMode,
-    hasRepliedRef: params.runContext.hasRepliedRef,
-    senderIsOwner: true,
-    sessionFile: params.sessionFile,
-    workspaceDir: params.workspaceDir,
-    config: params.cfg,
-    skillsSnapshot: params.skillsSnapshot,
-    prompt: effectivePrompt,
-    images: params.isFallbackRetry ? undefined : params.opts.images,
-    clientTools: params.opts.clientTools,
-    provider: params.providerOverride,
-    model: params.modelOverride,
-    authProfileId,
-    authProfileIdSource: authProfileId ? params.sessionEntry?.authProfileOverrideSource : undefined,
-    thinkLevel: params.resolvedThinkLevel,
-    verboseLevel: params.resolvedVerboseLevel,
-    timeoutMs: params.timeoutMs,
-    runId: params.runId,
-    lane: params.opts.lane,
-    abortSignal: params.opts.abortSignal,
-    extraSystemPrompt: params.opts.extraSystemPrompt,
-    inputProvenance: params.opts.inputProvenance,
-    streamParams: params.opts.streamParams,
-    agentDir: params.agentDir,
-    onAgentEvent: params.onAgentEvent,
-  });
+  return runWithAgentRunIdAsync(params.runId, () =>
+    runEmbeddedPiAgent({
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.sessionAgentId,
+      messageChannel: params.messageChannel,
+      agentAccountId: params.runContext.accountId,
+      messageTo: params.opts.replyTo ?? params.opts.to,
+      messageThreadId: params.opts.threadId,
+      groupId: params.runContext.groupId,
+      groupChannel: params.runContext.groupChannel,
+      groupSpace: params.runContext.groupSpace,
+      spawnedBy: params.spawnedBy,
+      currentChannelId: params.runContext.currentChannelId,
+      currentThreadTs: params.runContext.currentThreadTs,
+      replyToMode: params.runContext.replyToMode,
+      hasRepliedRef: params.runContext.hasRepliedRef,
+      senderIsOwner: true,
+      sessionFile: params.sessionFile,
+      workspaceDir: params.workspaceDir,
+      config: params.cfg,
+      skillsSnapshot: params.skillsSnapshot,
+      prompt: effectivePrompt,
+      images: params.isFallbackRetry ? undefined : params.opts.images,
+      clientTools: params.opts.clientTools,
+      provider: params.providerOverride,
+      model: params.modelOverride,
+      authProfileId,
+      authProfileIdSource: authProfileId
+        ? params.sessionEntry?.authProfileOverrideSource
+        : undefined,
+      thinkLevel: params.resolvedThinkLevel,
+      verboseLevel: params.resolvedVerboseLevel,
+      timeoutMs: params.timeoutMs,
+      runId: params.runId,
+      lane: params.opts.lane,
+      abortSignal: params.opts.abortSignal,
+      extraSystemPrompt: params.opts.extraSystemPrompt,
+      inputProvenance: params.opts.inputProvenance,
+      streamParams: params.opts.streamParams,
+      agentDir: params.agentDir,
+      onAgentEvent: params.onAgentEvent,
+    }),
+  );
 }
 
 export async function agentCommand(
@@ -655,5 +663,6 @@ export async function agentCommand(
     });
   } finally {
     clearAgentRunContext(runId);
+    clearBrowserActionCount(runId);
   }
 }

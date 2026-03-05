@@ -264,6 +264,7 @@ export type AgentEventHandlerOptions = {
   chatRunState: ChatRunState;
   resolveSessionKeyForRun: (runId: string) => string | undefined;
   clearAgentRunContext: (runId: string) => void;
+  clearBrowserActionCount?: (runId: string) => void;
   toolEventRecipients: ToolEventRecipientRegistry;
 };
 
@@ -275,6 +276,7 @@ export function createAgentEventHandler({
   chatRunState,
   resolveSessionKeyForRun,
   clearAgentRunContext,
+  clearBrowserActionCount,
   toolEventRecipients,
 }: AgentEventHandlerOptions) {
   const emitChatDelta = (
@@ -460,6 +462,7 @@ export function createAgentEventHandler({
           const finished = chatRunState.registry.shift(evt.runId);
           if (!finished) {
             clearAgentRunContext(evt.runId);
+            clearBrowserActionCount?.(evt.runId);
             return;
           }
           emitChatFinal(
@@ -494,6 +497,7 @@ export function createAgentEventHandler({
     if (lifecyclePhase === "end" || lifecyclePhase === "error") {
       toolEventRecipients.markFinal(evt.runId);
       clearAgentRunContext(evt.runId);
+      clearBrowserActionCount?.(evt.runId);
       agentRunSeq.delete(evt.runId);
       agentRunSeq.delete(clientRunId);
     }
