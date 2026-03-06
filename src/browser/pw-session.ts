@@ -478,19 +478,20 @@ export async function getPageForTargetId(opts: {
   return found;
 }
 
-export function refLocator(page: Page, ref: string) {
+export function refLocator(page: Page, ref: string, frameSelector?: string) {
   const normalized = ref.startsWith("@")
     ? ref.slice(1)
     : ref.startsWith("ref=")
       ? ref.slice(4)
       : ref;
 
+  const state = pageStates.get(page);
+  const effectiveFrame = frameSelector?.trim() || state?.roleRefsFrameSelector || "";
+
+  const scope = effectiveFrame ? page.frameLocator(effectiveFrame) : page;
+
   if (/^e\d+$/.test(normalized)) {
-    const state = pageStates.get(page);
     if (state?.roleRefsMode === "aria") {
-      const scope = state.roleRefsFrameSelector
-        ? page.frameLocator(state.roleRefsFrameSelector)
-        : page;
       return scope.locator(`aria-ref=${normalized}`);
     }
     const info = state?.roleRefs?.[normalized];
@@ -499,9 +500,6 @@ export function refLocator(page: Page, ref: string) {
         `Unknown ref "${normalized}". Run a new snapshot and use a ref from that snapshot.`,
       );
     }
-    const scope = state?.roleRefsFrameSelector
-      ? page.frameLocator(state.roleRefsFrameSelector)
-      : page;
     const locAny = scope as unknown as {
       getByRole: (
         role: never,
@@ -515,10 +513,10 @@ export function refLocator(page: Page, ref: string) {
   }
 
   if (/^ax\d+$/.test(normalized)) {
-    return page.locator(`[data-ax-ref="${normalized}"]`);
+    return scope.locator(`[data-ax-ref="${normalized}"]`);
   }
 
-  return page.locator(`aria-ref=${normalized}`);
+  return scope.locator(`aria-ref=${normalized}`);
 }
 
 export async function closePlaywrightBrowserConnection(): Promise<void> {

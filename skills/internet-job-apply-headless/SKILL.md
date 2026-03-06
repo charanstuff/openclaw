@@ -155,6 +155,10 @@ This skill is designed for environments where:
   and file upload — use the refs from the snapshot you just took (e.g. `e4` or `ax8`).
 - If any action fails with "Element e### not found/not visible" (or ax###), STOP and take a new
   snapshot, then re-locate the target element.
+- **Iframe forms (Ashby, etc.):** If the resume input or submit button is inside an iframe (e.g. Ashby
+  job forms), pass `frameSelector` with the act/upload request. Use `iframe:nth-of-type(2)` for the
+  second iframe (or `iframe:not([src*="recaptcha"])` to exclude reCAPTCHA). Example: `act` with
+  `ref: "ax128"` and `frameSelector: "iframe:nth-of-type(2)"` for elements in that iframe.
 
 ### C. File upload rule (mandatory)
 

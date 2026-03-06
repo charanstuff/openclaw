@@ -832,6 +832,7 @@ export function createBrowserTool(opts?: {
           const ref = readStringParam(params, "ref");
           const inputRef = readStringParam(params, "inputRef");
           const element = readStringParam(params, "element");
+          const frameSelector = readStringParam(params, "frameSelector");
           const { targetId, timeoutMs } = readOptionalTargetAndTimeout(params);
           if (proxyRequest) {
             const result = await proxyRequest({
@@ -843,6 +844,7 @@ export function createBrowserTool(opts?: {
                 ref,
                 inputRef,
                 element,
+                frameSelector,
                 targetId,
                 timeoutMs,
               },
@@ -855,6 +857,7 @@ export function createBrowserTool(opts?: {
               ref,
               inputRef,
               element,
+              frameSelector,
               targetId,
               timeoutMs,
               profile,

@@ -16,13 +16,14 @@ export async function highlightViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
 }): Promise<void> {
   const page = await getPageForTargetId(opts);
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   const ref = requireRef(opts.ref);
   try {
-    await refLocator(page, ref).highlight();
+    await refLocator(page, ref, opts.frameSelector).highlight();
   } catch (err) {
     throw toAIFriendlyError(err, ref);
   }
@@ -32,6 +33,7 @@ export async function clickViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
   doubleClick?: boolean;
   button?: "left" | "right" | "middle";
   modifiers?: Array<"Alt" | "Control" | "ControlOrMeta" | "Meta" | "Shift">;
@@ -44,7 +46,7 @@ export async function clickViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   const ref = requireRef(opts.ref);
-  const locator = refLocator(page, ref);
+  const locator = refLocator(page, ref, opts.frameSelector);
   const timeout = Math.max(500, Math.min(60_000, Math.floor(opts.timeoutMs ?? 8000)));
   logPw.info("click start", { ref, timeoutMs: timeout, targetId: opts.targetId });
   try {
@@ -87,6 +89,7 @@ export async function hoverViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
   timeoutMs?: number;
 }): Promise<void> {
   const ref = requireRef(opts.ref);
@@ -94,7 +97,7 @@ export async function hoverViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   try {
-    await refLocator(page, ref).hover({
+    await refLocator(page, ref, opts.frameSelector).hover({
       timeout: Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000)),
     });
   } catch (err) {
@@ -107,6 +110,7 @@ export async function dragViaPlaywright(opts: {
   targetId?: string;
   startRef: string;
   endRef: string;
+  frameSelector?: string;
   timeoutMs?: number;
 }): Promise<void> {
   const startRef = requireRef(opts.startRef);
@@ -118,9 +122,12 @@ export async function dragViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   try {
-    await refLocator(page, startRef).dragTo(refLocator(page, endRef), {
-      timeout: Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000)),
-    });
+    await refLocator(page, startRef, opts.frameSelector).dragTo(
+      refLocator(page, endRef, opts.frameSelector),
+      {
+        timeout: Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000)),
+      },
+    );
   } catch (err) {
     throw toAIFriendlyError(err, `${startRef} -> ${endRef}`);
   }
@@ -130,6 +137,7 @@ export async function selectOptionViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
   values: string[];
   timeoutMs?: number;
 }): Promise<void> {
@@ -141,7 +149,7 @@ export async function selectOptionViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   try {
-    await refLocator(page, ref).selectOption(opts.values, {
+    await refLocator(page, ref, opts.frameSelector).selectOption(opts.values, {
       timeout: Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000)),
     });
   } catch (err) {
@@ -170,6 +178,7 @@ export async function typeViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
   text: string;
   submit?: boolean;
   slowly?: boolean;
@@ -180,7 +189,7 @@ export async function typeViaPlaywright(opts: {
   ensurePageState(page);
   restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
   const ref = requireRef(opts.ref);
-  const locator = refLocator(page, ref);
+  const locator = refLocator(page, ref, opts.frameSelector);
   const timeout = Math.max(500, Math.min(60_000, opts.timeoutMs ?? 8000));
   try {
     if (opts.slowly) {
@@ -201,6 +210,7 @@ export async function fillFormViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   fields: BrowserFormField[];
+  frameSelector?: string;
   timeoutMs?: number;
 }): Promise<void> {
   const page = await getPageForTargetId(opts);
@@ -222,7 +232,7 @@ export async function fillFormViaPlaywright(opts: {
     if (!ref || !type) {
       continue;
     }
-    const locator = refLocator(page, ref);
+    const locator = refLocator(page, ref, opts.frameSelector);
     if (type === "checkbox" || type === "radio") {
       const checked =
         rawValue === true || rawValue === 1 || rawValue === "1" || rawValue === "true";
@@ -248,6 +258,7 @@ export async function evaluateViaPlaywright(opts: {
   targetId?: string;
   fn: string;
   ref?: string;
+  frameSelector?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
 }): Promise<unknown> {
@@ -308,7 +319,7 @@ export async function evaluateViaPlaywright(opts: {
 
   try {
     if (opts.ref) {
-      const locator = refLocator(page, opts.ref);
+      const locator = refLocator(page, opts.ref, opts.frameSelector);
       // eslint-disable-next-line @typescript-eslint/no-implied-eval -- required for browser-context eval
       const elementEvaluator = new Function(
         "el",
@@ -397,6 +408,7 @@ export async function scrollIntoViewViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
   ref: string;
+  frameSelector?: string;
   timeoutMs?: number;
 }): Promise<void> {
   const page = await getPageForTargetId(opts);
@@ -405,7 +417,7 @@ export async function scrollIntoViewViaPlaywright(opts: {
   const timeout = normalizeTimeoutMs(opts.timeoutMs, 20_000);
 
   const ref = requireRef(opts.ref);
-  const locator = refLocator(page, ref);
+  const locator = refLocator(page, ref, opts.frameSelector);
   try {
     await locator.scrollIntoViewIfNeeded({ timeout });
   } catch (err) {
@@ -634,6 +646,7 @@ export async function setInputFilesViaPlaywright(opts: {
   targetId?: string;
   inputRef?: string;
   element?: string;
+  frameSelector?: string;
   paths: string[];
 }): Promise<void> {
   const page = await getPageForTargetId(opts);
@@ -651,7 +664,10 @@ export async function setInputFilesViaPlaywright(opts: {
     throw new Error("inputRef or element is required");
   }
 
-  const locator = inputRef ? refLocator(page, inputRef) : page.locator(element).first();
+  const scope = opts.frameSelector?.trim() ? page.frameLocator(opts.frameSelector) : page;
+  const locator = inputRef
+    ? refLocator(page, inputRef, opts.frameSelector)
+    : scope.locator(element).first();
   const uploadPathsResult = await resolveStrictExistingPathsWithinRoot({
     rootDir: DEFAULT_UPLOAD_DIR,
     requestedPaths: opts.paths,

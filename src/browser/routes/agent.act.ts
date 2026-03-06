@@ -32,6 +32,7 @@ export function registerBrowserAgentActRoutes(
     }
     const kind: ActKind = kindRaw;
     const targetId = resolveTargetIdFromBody(body);
+    const frameSelector = toStringOrEmpty(body.frameSelector) || undefined;
     if (Object.hasOwn(body, "selector") && kind !== "wait") {
       return jsonError(res, 400, SELECTOR_UNSUPPORTED_MESSAGE);
     }
@@ -77,6 +78,9 @@ export function registerBrowserAgentActRoutes(
                 ref,
                 doubleClick,
               };
+              if (frameSelector) {
+                clickRequest.frameSelector = frameSelector;
+              }
               if (button) {
                 clickRequest.button = button;
               }
@@ -109,6 +113,9 @@ export function registerBrowserAgentActRoutes(
                 submit,
                 slowly,
               };
+              if (frameSelector) {
+                typeRequest.frameSelector = frameSelector;
+              }
               if (timeoutMs) {
                 typeRequest.timeoutMs = timeoutMs;
               }
@@ -139,6 +146,7 @@ export function registerBrowserAgentActRoutes(
                 cdpUrl,
                 targetId: tab.targetId,
                 ref,
+                frameSelector,
                 timeoutMs: timeoutMs ?? undefined,
               });
               return res.json({ ok: true, targetId: tab.targetId });
@@ -154,6 +162,9 @@ export function registerBrowserAgentActRoutes(
                 targetId: tab.targetId,
                 ref,
               };
+              if (frameSelector) {
+                scrollRequest.frameSelector = frameSelector;
+              }
               if (timeoutMs) {
                 scrollRequest.timeoutMs = timeoutMs;
               }
@@ -172,6 +183,7 @@ export function registerBrowserAgentActRoutes(
                 targetId: tab.targetId,
                 startRef,
                 endRef,
+                frameSelector,
                 timeoutMs: timeoutMs ?? undefined,
               });
               return res.json({ ok: true, targetId: tab.targetId });
@@ -188,6 +200,7 @@ export function registerBrowserAgentActRoutes(
                 targetId: tab.targetId,
                 ref,
                 values,
+                frameSelector,
                 timeoutMs: timeoutMs ?? undefined,
               });
               return res.json({ ok: true, targetId: tab.targetId });
@@ -224,6 +237,7 @@ export function registerBrowserAgentActRoutes(
                 cdpUrl,
                 targetId: tab.targetId,
                 fields,
+                frameSelector,
                 timeoutMs: timeoutMs ?? undefined,
               });
               return res.json({ ok: true, targetId: tab.targetId });
@@ -320,6 +334,9 @@ export function registerBrowserAgentActRoutes(
                 ref,
                 signal: req.signal,
               };
+              if (frameSelector) {
+                evalRequest.frameSelector = frameSelector;
+              }
               if (evalTimeoutMs !== undefined) {
                 evalRequest.timeoutMs = evalTimeoutMs;
               }
@@ -399,10 +416,12 @@ export function registerBrowserAgentActRoutes(
       targetId,
       feature: "highlight",
       run: async ({ cdpUrl, tab, pw }) => {
+        const frameSelector = toStringOrEmpty(body.frameSelector) || undefined;
         await pw.highlightViaPlaywright({
           cdpUrl,
           targetId: tab.targetId,
           ref,
+          frameSelector,
         });
         res.json({ ok: true, targetId: tab.targetId });
       },

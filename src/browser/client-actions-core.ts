@@ -155,6 +155,7 @@ export async function browserArmFileChooser(
     ref?: string;
     inputRef?: string;
     element?: string;
+    frameSelector?: string;
     targetId?: string;
     timeoutMs?: number;
     profile?: string;
@@ -169,6 +170,7 @@ export async function browserArmFileChooser(
       ref: opts.ref,
       inputRef: opts.inputRef,
       element: opts.element,
+      frameSelector: opts.frameSelector,
       targetId: opts.targetId,
       timeoutMs: opts.timeoutMs,
     }),

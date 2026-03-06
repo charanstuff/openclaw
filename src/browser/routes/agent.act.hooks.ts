@@ -17,6 +17,7 @@ export function registerBrowserAgentActHookRoutes(
     const ref = toStringOrEmpty(body.ref) || undefined;
     const inputRef = toStringOrEmpty(body.inputRef) || undefined;
     const element = toStringOrEmpty(body.element) || undefined;
+    const frameSelector = toStringOrEmpty(body.frameSelector) || undefined;
     const paths = toStringArray(body.paths) ?? [];
     const timeoutMs = toNumber(body.timeoutMs);
     if (!paths.length) {
@@ -57,6 +58,7 @@ export function registerBrowserAgentActHookRoutes(
               targetId: tab.targetId,
               inputRef,
               element,
+              frameSelector,
               paths: resolvedPaths,
             });
           } else {
@@ -71,6 +73,7 @@ export function registerBrowserAgentActHookRoutes(
                 cdpUrl,
                 targetId: tab.targetId,
                 ref,
+                frameSelector,
               });
             }
           }
