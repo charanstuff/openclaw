@@ -215,6 +215,32 @@ export async function writeDebugPayloadIfEnabled(action: string, payload: unknow
   }
 }
 
+const TABS_MAX_ENTRIES = 30;
+const TABS_TITLE_MAX = 80;
+const TABS_URL_MAX = 120;
+
+/**
+ * Sanitize tabs list: cap count and truncate title/url per tab to limit token burn.
+ */
+export function sanitizeTabs(
+  tabs: unknown[],
+): Array<{ targetId: string; title: string; url: string }> {
+  const list = Array.isArray(tabs) ? tabs : [];
+  return list.slice(0, TABS_MAX_ENTRIES).map((t) => {
+    const tab = t && typeof t === "object" ? (t as Record<string, unknown>) : {};
+    const targetId = typeof tab.targetId === "string" ? tab.targetId : "";
+    let title = typeof tab.title === "string" ? tab.title : "";
+    let url = typeof tab.url === "string" ? tab.url : "";
+    if (title.length > TABS_TITLE_MAX) {
+      title = title.slice(0, TABS_TITLE_MAX) + "…";
+    }
+    if (url.length > TABS_URL_MAX) {
+      url = url.slice(0, TABS_URL_MAX) + "…";
+    }
+    return { targetId, title, url };
+  });
+}
+
 export function isSanitizeEnabled(): boolean {
   const v = process.env.OPENCLAW_BROWSER_SANITIZE_RESULTS?.trim();
   if (v === "0" || v?.toLowerCase() === "false") {

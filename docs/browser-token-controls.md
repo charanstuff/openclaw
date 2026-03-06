@@ -20,6 +20,9 @@ Token usage per LLM call is already recorded in session transcripts and (when en
 - **Snapshot (ARIA format):** URL, targetId, and a compact list of interactive nodes (ref, role, name) up to ~8k chars.
 - **Act result:** `ok`, `url`, `targetId`, and last error (up to 500 chars). Large response bodies are dropped.
 - **Console:** Last 10 messages, total cap 2,000 chars. No full network/console dumps unless sanitize is off.
+- **Tabs:** Max 30 tabs; each title truncated to 80 chars, each URL to 120 chars. Prevents huge tab lists from burning tokens.
+
+**Not sanitized (by design):** Screenshot and snapshot-with-labels return **images** (base64). Vision models need the image; those tool results still add significant tokens. Status, start, stop, profiles, open, focus, close, navigate, pdf, upload, dialog return small JSON and are left as-is.
 
 Full raw payloads can still be written to `OPENCLAW_BROWSER_DEBUG_PAYLOAD_DIR` for inspection; they are never sent to the model.
 
@@ -31,9 +34,34 @@ Full raw payloads can still be written to `OPENCLAW_BROWSER_DEBUG_PAYLOAD_DIR` f
   - **Loop guards:** Cap of 50 browser actions per task and 2 retries per action limits runaway loops and retry storms, reducing total calls and tokens when the model would have kept retrying or taking many extra steps.
 - **Summary:** Expect **large reduction in total tokens** (especially input) and **fewer browser-driven calls** when loops are hit. Exact numbers depend on session mix; run `scripts/top_llm_calls.ts` before and after to compare.
 
+## Why is token usage still high? (checklist, verified in code)
+
+If you still see high token usage after this change, work through this (each checked against the codebase):
+
+1. **New code running?**  
+   The sanitizer only runs in builds that include the browser-tool-sanitizer and limits. If the process/image was started before the update, or you’re on a branch without this code, you’re still sending full payloads. **Restart/redeploy** with the commit that has the token controls.
+
+2. **Sanitizer disabled?**  
+   If `OPENCLAW_BROWSER_SANITIZE_RESULTS=0` or `false`, full browser results are sent. **Check env** (gateway, systemd, Docker, etc.) and remove or set to `1`.
+
+3. **Conversation history**  
+   The _latest_ tool result might be small, but the **whole conversation** (all previous turns + tool results) is sent each time. Old turns may still contain large tool results from before the fix, or from other tools (exec, read, web_fetch). **Start a new session** or **reset the session** to drop old context and see the effect of sanitized browser-only turns.
+
+4. **Other tools**  
+   Only **browser** results are sanitized. Large `exec`, `read`, `web_fetch`, or other tool outputs still add tokens. Check `scripts/top_llm_calls.ts` “By tool” to see which tools dominate.
+
+5. **Confirm sanitizer is running**  
+   Set `OPENCLAW_BROWSER_LOG_RESULT_SIZE=1` and restart. In the logs you should see `browser result size { action: "snapshot", chars: 8xxx }` (or similar). If snapshot chars are in the tens of thousands, the sanitizer is not applied (old code or sanitize off).
+
+6. **Tabs**  
+   The **tabs** action used to return the full tab list (unbounded). It is now sanitized: max 30 tabs, title 80 chars, URL 120 chars. If you're on old code, tabs could have been a large contributor.
+
+7. **Images**  
+   **Screenshot** and **snapshot with labels** return base64 images via `imageResultFromFile`. Those are not truncated; vision models need the image. If the latest request used many screenshots or label snapshots, token usage will still be high from image content.
+
 ## Changed files
 
-- `src/agents/tools/browser-tool-sanitizer.ts` — Sanitizer and debug payload writer.
+- `src/agents/tools/browser-tool-sanitizer.ts` — Sanitizer (snapshot, act, console, tabs) and debug payload writer.
 - `src/agents/tools/browser-tool-limits.ts` — Action count and retry limits, limit check.
 - `src/agents/tools/browser-tool.ts` — Uses sanitizer, limits, and optional result-size logging.
 - `src/infra/agent-run-storage.ts` — AsyncLocalStorage for current runId (used by browser tool for per-task limits).

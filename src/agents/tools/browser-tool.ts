@@ -40,6 +40,7 @@ import {
   sanitizeConsole,
   sanitizeSnapshotAi,
   sanitizeSnapshotAria,
+  sanitizeTabs,
   writeDebugPayloadIfEnabled,
 } from "./browser-tool-sanitizer.js";
 import { BrowserToolSchema } from "./browser-tool.schema.js";
@@ -402,20 +403,28 @@ export function createBrowserTool(opts?: {
             return jsonResult(result);
           }
           return jsonResult({ profiles: await browserProfiles(baseUrl) });
-        case "tabs":
+        case "tabs": {
+          let tabs: unknown[];
           if (proxyRequest) {
             const result = await proxyRequest({
               method: "GET",
               path: "/tabs",
               profile,
             });
-            const tabs = (result as { tabs?: unknown[] }).tabs ?? [];
-            return formatTabsToolResult(tabs);
+            tabs = (result as { tabs?: unknown[] }).tabs ?? [];
+          } else {
+            tabs = await browserTabs(baseUrl, { profile });
           }
-          {
-            const tabs = await browserTabs(baseUrl, { profile });
-            return formatTabsToolResult(tabs);
+          const tabsForPrompt = isSanitizeEnabled() ? sanitizeTabs(tabs) : tabs;
+          const out = formatTabsToolResult(tabsForPrompt);
+          if (LOG_RESULT_SIZE && out.content?.[0] && "text" in out.content[0]) {
+            logBrowserTool.info("browser result size", {
+              action: "tabs",
+              chars: (out.content[0] as { text: string }).text.length,
+            });
           }
+          return out;
+        }
         case "open": {
           const targetUrl = readStringParam(params, "targetUrl", {
             required: true,
